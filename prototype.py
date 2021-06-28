@@ -7,7 +7,7 @@ import math
 import utils
 
 from dataclasses import dataclass
-from detectron2.config import get_cfg
+from detectron2.config import get_cfg, CfgNode
 from detectron2 import model_zoo
 from detectron2.engine import DefaultPredictor
 from detectron2.utils.visualizer import Visualizer
@@ -22,8 +22,9 @@ class AspectRatio:
 
 
 def configure_detectron(mode: str = 'cpu',
-                        config_location: str = 'COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml',
-                        weights_location: str = 'COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml'
+                        threshold: float = .8,
+                        config_location: str = 'COCO-Keypoints/keypoint_rcnn_R_50_FPN_1x.yaml',
+                        weights_location: str = 'COCO-Keypoints/keypoint_rcnn_R_50_FPN_1x.yaml'
                         ) -> CfgNode:
     """Configures detectron configuration object and returns it's interface."""
     cfg = get_cfg()
@@ -33,7 +34,8 @@ def configure_detectron(mode: str = 'cpu',
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_location)
     return cfg
 
-def mask_dimensions(image: cv2.imread, threshold: float, cfg: CfgNode, mode: str = 'cpu') -> list:
+def mask_dimensions(image: cv2.imread, cfg: CfgNode, mode: str = 'cpu'
+                    ) -> list:
     """Returns image recognition mask dimensions for red cup.
 
     Configures detectron config object with pretrained model, creates
@@ -46,8 +48,12 @@ def mask_dimensions(image: cv2.imread, threshold: float, cfg: CfgNode, mode: str
     model = DefaultPredictor(cfg)
     prediction = model(image)
     # oh god no
-    print(prediction['instances'].pred_classes[41])
-    # return prediction['instances'].pred_boxes[41].tensor.cpu().numpy()[0].astype(np.int32)
+    # print(prediction['instances'].pred_classes[41])
+    # # return prediction['instances'].pred_boxes[41].tensor.cpu().numpy()[0].astype(np.int32)
+    # return np.array(prediction['instances'].pred_boxes[])
+
+    print(prediction['instances'].pred_classes)
+    print(prediction['instances'].pred_classes == 41)
 
 
 def mask_aspect_ratio(image: cv2.imread, mask: list) -> AspectRatio:
@@ -133,4 +139,6 @@ def show_image(image: cv2.imread):
 
 
 if __name__ == '__main__':
-    pass
+    image = cv2.imread('cup.jpg')
+    show_image(image)
+    print(mask_dimensions(image=image, cfg=configure_detectron(), mode='cpu'))
