@@ -3,7 +3,7 @@
 Defines functions for law of sines and cosines for solving SAS
 triangles.
 """
-from math import sqrt, sin, cos, asin
+from math import asin, cos, sin, sqrt
 
 
 def cosines_law(b: float, c: float, A: float) -> float:

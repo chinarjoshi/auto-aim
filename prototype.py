@@ -1,42 +1,48 @@
-"""Auto-aims catapult using 60 degree arc laptop camera."""
-import cv2
-import serial
-import numpy as np
-import matplotlib.pyplot as plt
+"""Auto-aims launching device using 60-degree arc camera."""
 import math
-import utils
-
 from dataclasses import dataclass
-from detectron2.config import get_cfg, CfgNode
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import serial
 from detectron2 import model_zoo
+from detectron2.config import CfgNode, get_cfg
+from detectron2.data import DatasetCatalog, MetadataCatalog
 from detectron2.engine import DefaultPredictor
 from detectron2.utils.visualizer import Visualizer
-from detectron2.data import MetadataCatalog, DatasetCatalog
-# ----------------------------------------------------------
+
+import utils
+
 
 @dataclass
 class AspectRatio:
     """Represents an x and y aspect ratio."""
+
     x_ratio: int
     y_ratio: int
 
 
-def configure_detectron(mode: str = 'cpu',
-                        threshold: float = .8,
-                        config_location: str = 'COCO-Keypoints/keypoint_rcnn_R_50_FPN_1x.yaml',
-                        weights_location: str = 'COCO-Keypoints/keypoint_rcnn_R_50_FPN_1x.yaml'
-                        ) -> CfgNode:
-    """Configures detectron configuration object and returns it's interface."""
+def configure_detectron(
+    mode: str = "cpu",
+    threshold: float = 0.8,
+    config_location: str = "COCO-Keypoints/keypoint_rcnn_R_50_FPN_1x.yaml",
+    weights_location: str = "COCO-Keypoints/keypoint_rcnn_R_50_FPN_1x.yaml",
+) -> CfgNode:
+    """Configures detectron configuration object and returns its interface."""
     cfg = get_cfg()
     cfg.MODEL.DEVICE = mode
     cfg.merge_from_file(model_zoo.get_config_file(config_location))
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(weights_location)
+
     return cfg
 
-def mask_dimensions(image: cv2.imread, cfg: CfgNode, mode: str = 'cpu'
-                    ) -> list:
-    """Returns image recognition mask dimensions for red cup.
+
+def mask_dimensions(
+    image: np.ndarray, cfg: CfgNode, mode: str = "cpu", object: str = "cup"
+) -> list:
+    """Returns image recognition mask dimensions for the requested object.
 
     Configures detectron config object with pretrained model, creates
     api for model detection, and returns formatted rectangular coordinate
@@ -47,13 +53,26 @@ def mask_dimensions(image: cv2.imread, cfg: CfgNode, mode: str = 'cpu'
     """
     model = DefaultPredictor(cfg)
     prediction = model(image)
-    # oh god no
-    # print(prediction['instances'].pred_classes[41])
-    # # return prediction['instances'].pred_boxes[41].tensor.cpu().numpy()[0].astype(np.int32)
-    # return np.array(prediction['instances'].pred_boxes[])
 
-    print(prediction['instances'].pred_classes)
-    print(prediction['instances'].pred_classes == 41)
+    for index, catalog in enumerate(
+        MetadataCatalog.get(cfg.DATASETS.TRAIN[0]).thing_classes
+    ):
+        if catalog == object:
+            object_index = index
+
+    object_index = [
+        index
+        for index, catalog in enumerate(
+            MetadataCatalog.get(cfg.DATASETS.TRAIN[0]).thing_classes
+        )
+        if catalog == object
+    ][0]
+
+    for i in prediction["instances"].pred_classes:
+        if i == 41:
+            return np.array(prediction["instances"].pred_boxes[i])
+    else:
+        raise Exception("Requested object not found.")
 
 
 def mask_aspect_ratio(image: cv2.imread, mask: list) -> AspectRatio:
@@ -75,14 +94,18 @@ def mask_aspect_ratio(image: cv2.imread, mask: list) -> AspectRatio:
     the one value that determines translational launch angle is the midpoint
     of the rectangular mask represented as a pixel ratio.
     """
-    x_ratio = ((image.shape[1]/2) - (mask[2] - mask[0]) / image.shape[1]/2)
-    y_ratio = ((image.shape[0]/2) - (mask[3] - mask[1]) / image.shape[0]/2)
+    x_ratio = (image.shape[1] / 2) - (mask[2] - mask[0]) / image.shape[1] / 2
+    y_ratio = (image.shape[0] / 2) - (mask[3] - mask[1]) / image.shape[0] / 2
 
     return AspectRatio(x_ratio, y_ratio)
 
 
-def launch_angle(distance_camera_to_structure: int, aspect_ratios: AspectRatio,
-                 in_per_ppx: int = 5, laptop_arc: int = 30):
+def launch_angle(
+    distance_camera_to_structure: int,
+    aspect_ratios: AspectRatio,
+    in_per_ppx: int = 5,
+    laptop_arc: int = 30,
+):
     """Using the mask's aspect ratio, returns launch angle.
 
     Returns the angle at which the catapult should rotate from 0 degrees angular
@@ -119,15 +142,17 @@ def launch_angle(distance_camera_to_structure: int, aspect_ratios: AspectRatio,
     distances, this method follows a purely mathematical approach.
     """
     # TODO Some constant inch per pixel
-    radius = (aspect_ratio.x_ratio * in_per_ppx) / (math.pi/3)
-    x_angle = aspect_ratios.x_ratio * laptop_arc #degrees
+    radius = (aspect_ratio.x_ratio * in_per_ppx) / (math.pi / 3)
+    x_angle = aspect_ratios.x_ratio * laptop_arc  # degrees
 
     # Law of cosines to calculate missing side length
-    distance_structure_to_structure = utils.cosines_law(b=radius,
-                                    c=distance_camera_to_structure, A=x_angle)
+    distance_structure_to_structure = utils.cosines_law(
+        b=radius, c=distance_camera_to_structure, A=x_angle
+    )
 
-    theta = utils.sines_law(a=distance_structure_to_structure,
-                            b=distance_camera_to_structure, B=x_angle)
+    theta = utils.sines_law(
+        a=distance_structure_to_structure, b=distance_camera_to_structure, B=x_angle
+    )
 
     return 90 - theta, aspect_ratios.y_ratio * 30
 
@@ -138,7 +163,7 @@ def show_image(image: cv2.imread):
     cv2.destroyAllWindows()
 
 
-if __name__ == '__main__':
-    image = cv2.imread('cup.jpg')
+if __name__ == "__main__":
+    image = cv2.imread("cup.jpg")
     show_image(image)
-    print(mask_dimensions(image=image, cfg=configure_detectron(), mode='cpu'))
+    print(mask_dimensions(image=image, cfg=configure_detectron(), mode="cpu"))
