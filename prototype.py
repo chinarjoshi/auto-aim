@@ -41,7 +41,7 @@ def configure_detectron(
 
 def mask_dimensions(
     image: np.ndarray, cfg: CfgNode, mode: str = "cpu", object: str = "cup"
-) -> list:
+) -> np.array:
     """Returns image recognition mask dimensions for the requested object.
 
     Configures detectron config object with pretrained model, creates
@@ -54,12 +54,6 @@ def mask_dimensions(
     model = DefaultPredictor(cfg)
     prediction = model(image)
 
-    for index, catalog in enumerate(
-        MetadataCatalog.get(cfg.DATASETS.TRAIN[0]).thing_classes
-    ):
-        if catalog == object:
-            object_index = index
-
     object_index = [
         index
         for index, catalog in enumerate(
@@ -69,7 +63,7 @@ def mask_dimensions(
     ][0]
 
     for i in prediction["instances"].pred_classes:
-        if i == 41:
+        if i == object_index:
             return np.array(prediction["instances"].pred_boxes[i])
     else:
         raise Exception("Requested object not found.")
@@ -80,14 +74,14 @@ def mask_aspect_ratio(image: cv2.imread, mask: list) -> AspectRatio:
 
     The whole system is represented as the following model:
 
-      [fort2]
+    [structure2]
         |  \
         |   \
  (10ft) |    \
         |     \
         |      \
         |    (θ)\
-     [fort1] [laptop]
+  [structure1] [camera]
           (1ft)
 
     Since the camera will always be facing directly at the opposing structure,
@@ -105,7 +99,7 @@ def launch_angle(
     aspect_ratios: AspectRatio,
     in_per_ppx: int = 5,
     laptop_arc: int = 30,
-):
+) -> tuple:
     """Using the mask's aspect ratio, returns launch angle.
 
     Returns the angle at which the catapult should rotate from 0 degrees angular
@@ -135,13 +129,12 @@ def launch_angle(
     Assume the inital angular displacement of the laptop is 78.69 degrees.
 
     We have a SAS scalene triangle from the resultant measurements, thus we can
-    use law of sines to find the distance between the two structures, and then
-    plug that into the law of cosines to find delta theta.
+    use law of cosines to find the distance between the two structures, and then
+    plug that into the law of sines to find delta theta.
 
     Although a linear regression model can be trained using annotated pictures with
     distances, this method follows a purely mathematical approach.
     """
-    # TODO Some constant inch per pixel
     radius = (aspect_ratio.x_ratio * in_per_ppx) / (math.pi / 3)
     x_angle = aspect_ratios.x_ratio * laptop_arc  # degrees
 
